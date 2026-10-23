@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chat</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #0f0f0f; color: #fff; margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.92); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes popUp {
+            0% { opacity: 0; transform: scale(0.8) translateY(20px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 0 0 rgba(187, 134, 252, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(187, 134, 252, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(187, 134, 252, 0); }
+        }
+
+        .screen { display: none; flex-direction: column; height: 100vh; position: absolute; top: 0; left: 0; width: 100%; background: #0f0f0f; transition: 0.3s ease; }
+        .screen.active { display: flex; animation: fadeIn 0.3s ease forwards; }
+
+        .header { padding: 14px 16px; background: #1c1c1e; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2c2c2e; }
+        .header-title { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: 0.3px; }
+        .my-badge { font-size: 13px; color: #bb86fc; background: rgba(187, 134, 252, 0.15); padding: 6px 12px; border-radius: 14px; font-weight: 600; border: 1px solid rgba(187, 134, 252, 0.3); animation: pulseGlow 3s infinite; cursor: pointer; transition: transform 0.15s; }
+        .my-badge:active { transform: scale(0.95); background: rgba(187, 134, 252, 0.3); }
+
+        .search-bar { padding: 12px 16px; background: #1c1c1e; display: flex; gap: 8px; border-bottom: 1px solid #2c2c2e; }
+        .search-bar input { flex: 1; padding: 10px 14px; border-radius: 12px; border: 1px solid #3a3a3c; background: #121214; color: #fff; font-size: 15px; outline: none; transition: 0.2s; }
+        .search-bar input:focus { border-color: #bb86fc; box-shadow: 0 0 0 3px rgba(187, 134, 252, 0.2); }
+        .search-bar button { padding: 0 16px; border-radius: 12px; border: none; background: #bb86fc; color: #000; font-weight: 700; cursor: pointer; font-size: 14px; transition: transform 0.15s, background 0.15s; }
+        .search-bar button:active { transform: scale(0.94); background: #9965f4; }
+
+        .chat-list { flex: 1; overflow-y: auto; }
+        .chat-item { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #1c1c1e; cursor: pointer; transition: background 0.2s, transform 0.15s; }
+        .chat-item:active { background: #2c2c2e; transform: scale(0.98); }
+        .avatar { width: 50px; height: 50px; border-radius: 50%; background: #3a3a3c; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 20px; margin-right: 14px; flex-shrink: 0; color: #fff; transition: transform 0.3s; }
+        .chat-item:hover .avatar { transform: scale(1.05); }
+        .avatar.saved { background: linear-gradient(135deg, #bb86fc, #6200ee); color: #fff; font-size: 22px; }
+        .chat-info { flex: 1; overflow: hidden; }
+        .chat-title { font-weight: 600; font-size: 16px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .chat-preview { color: #8e8e93; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .unread-badge { background: #bb86fc; color: #000; font-size: 12px; font-weight: bold; padding: 2px 8px; border-radius: 10px; animation: scaleIn 0.2s ease; }
+
+        .chat-header { padding: 10px 16px; background: #1c1c1e; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #2c2c2e; }
+        .back-btn { background: none; border: none; color: #bb86fc; font-size: 26px; cursor: pointer; padding: 0 6px 0 0; display: flex; align-items: center; transition: transform 0.2s; }
+        .back-btn:active { transform: translateX(-4px); }
+        .chat-header-info { flex: 1; overflow: hidden; }
+        .chat-header-title { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-header-status { font-size: 12px; color: #03dac6; margin-top: 2px; transition: color 0.3s; }
+
+        #messages-box { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .msg { padding: 10px 14px; border-radius: 16px; max-width: 78%; word-wrap: break-word; font-size: 15px; line-height: 1.35; position: relative; animation: scaleIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; transform-origin: bottom; cursor: pointer; transition: transform 0.1s; }
+        .msg:active { transform: scale(0.97); }
+        .my-msg { background: #bb86fc; color: #000; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .friend-msg { background: #262629; color: #fff; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .sys-msg { color: #8e8e93; font-size: 12px; text-align: center; align-self: center; margin: 8px 0; background: #1c1c1e; padding: 6px 14px; border-radius: 12px; animation: fadeIn 0.3s ease; border: 1px solid #2c2c2e; }
+        .msg-time { font-size: 10px; opacity: 0.65; text-align: right; margin-top: 4px; }
+
+        .input-area { padding: 10px 12px; background: #1c1c1e; display: flex; gap: 8px; align-items: center; border-top: 1px solid #2c2c2e; }
+        .input-area input { flex: 1; padding: 12px 16px; border-radius: 22px; border: 1px solid #3a3a3c; background: #121214; color: #fff; font-size: 15px; outline: none; transition: 0.2s; }
+        .input-area input:focus { border-color: #bb86fc; }
+        .send-btn { width: 44px; height: 44px; border-radius: 50%; border: none; background: #bb86fc; color: #000; font-size: 18px; display: flex; justify-content: center; align-items: center; cursor: pointer; flex-shrink: 0; transition: transform 0.2s, background 0.2s; }
+        .send-btn:active { transform: scale(0.85) rotate(15deg); background: #9965f4; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); z-index: 100; justify-content: center; align-items: center; animation: fadeIn 0.2s ease; }
+        .modal-card { width: 85%; max-width: 300px; background: #1c1c1e; border-radius: 18px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); border: 1px solid #2c2c2e; animation: popUp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; display: flex; flex-direction: column; gap: 8px; }
+        .modal-btn { width: 100%; padding: 14px; border-radius: 12px; border: none; background: #2c2c2e; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
+        .modal-btn:active { background: #3a3a3c; transform: scale(0.97); }
+        .modal-btn.purple { background: #bb86fc; color: #000; }
+        .modal-btn.purple:active { background: #9965f4; }
+        .modal-btn.cancel { background: transparent; color: #ff5252; }
+        .modal-input { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid #3a3a3c; background: #121214; color: #fff; font-size: 16px; outline: none; margin-bottom: 4px; }
+        .modal-input:focus { border-color: #bb86fc; }
+    </style>
+</head>
+<body>
+
+    <div id="main-screen" class="screen active">
+        <div class="header">
+            <div class="header-title">Chat</div>
+            <div id="my-badge" class="my-badge" onclick="openMyBadgeModal()">@user</div>
+        </div>
+
+        <div class="search-bar">
+            <input type="text" id="search-input" placeholder="Введи юз друга для поиска..." onkeypress="if(event.key==='Enter') searchAndOpenChat()">
+            <button onclick="searchAndOpenChat()">Найти</button>
+        </div>
+
+        <div class="chat-list" id="chat-list"></div>
+    </div>
+
+    <div id="chat-screen" class="screen">
+        <div class="chat-header">
+            <button class="back-btn" onclick="closeChat()">←</button>
+            <div class="avatar" id="active-avatar" style="width: 38px; height: 38px; font-size: 16px; margin-right: 4px;">⭐</div>
+            <div class="chat-header-info">
+                <div class="chat-header-title" id="active-title">Избранное</div>
+                <div class="chat-header-status" id="active-status">Личные заметки</div>
+            </div>
+        </div>
+
+        <div id="messages-box"></div>
+
+        <div class="input-area">
+            <input type="text" id="msg-input" placeholder="Сообщение..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="send-btn" onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <div id="msg-modal" class="modal-overlay" onclick="closeModals(event, 'msg-modal')">
+        <div class="modal-card">
+            <button class="modal-btn" onclick="copySelectedMsg()">📋 Скопировать</button>
+            <button class="modal-btn purple" id="edit-btn-option" onclick="editSelectedMsg()" style="display: none;">✏️ Изменить</button>
+            <button class="modal-btn cancel" onclick="closeModals(null, 'msg-modal')">Отмена</button>
+        </div>
+    </div>
+
+    <div id="my-badge-modal" class="modal-overlay" onclick="closeModals(event, 'my-badge-modal')">
+        <div class="modal-card">
+            <div style="font-size: 14px; color: #8e8e93; text-align: center; margin-bottom: 2px;">Твой юз: <span id="modal-current-username" style="color: #bb86fc; font-weight: bold;"></span></div>
+            <button class="modal-btn" onclick="copyMyUsername()">📋 Скопировать юз</button>
+            <button class="modal-btn purple" onclick="openChangeUsernamePrompt()">✏️ Изменить юз</button>
+            <button class="modal-btn cancel" onclick="closeModals(null, 'my-badge-modal')">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="change-username-modal" class="modal-overlay" onclick="closeModals(event, 'change-username-modal')">
+        <div class="modal-card">
+            <div style="font-size: 15px; font-weight: bold; text-align: center; margin-bottom: 4px;">Новый юзнейм</div>
+            <input type="text" id="new-username-input" class="modal-input" placeholder="Введите новый юз...">
+            <button class="modal-btn purple" onclick="applyNewUsername()">Сохранить</button>
+            <button class="modal-btn cancel" onclick="closeModals(null, 'change-username-modal')">Отмена</button>
+        </div>
+    </div>
+
+<script>
+    let peer = null;
+    let myName = "";
+    let activeChatId = null;
+    const PREFIX = "chat-p2p-ultra-2026-";
+    const connections = {};
+    let selectedMsgIndex = null;
+
+    const randomId = Math.floor(1000 + Math.random() * 9000);
+    myName = "user_" + randomId;
+
+    let savedNotes = [];
+    try {
+        savedNotes = JSON.parse(localStorage.getItem('chat_self_notes') || '[]');
+    } catch(e) { savedNotes = []; }
+
+    const chats = {
+        'saved': {
+            title: 'Избранное',
+            isSelfSaved: true,
+            messages: savedNotes,
+            unread: 0
+        }
+    };
+
+    function cleanUsername(name) {
+        const ruToEn = {
+            'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y',
+            'к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f',
+            'х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'
+        };
+        return name.trim().toLowerCase().replace(/^@/, '').split('').map(c => ruToEn[c] || c).join('').replace(/[^a-z0-9_-]/g, '');
+    }
+
+    function getTime() {
+        const d = new Date();
+        return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+    }
+
+    function saveNotesToStorage() {
+        try {
+            localStorage.setItem('chat_self_notes', JSON.stringify(chats['saved'].messages));
+        } catch(e) {}
+    }
+
+    window.onload = () => {
+        updateMyBadgeUI();
+        initPeerConnection(myName);
+        renderChatList();
+
+        // Фоновый цикл автоподключения (каждые 3 секунды пытается найти открытый чат, если друг зашел)
+        setInterval(() => {
+            if (activeChatId && activeChatId !== 'saved') {
+                if (!connections[activeChatId] || !connections[activeChatId].open) {
+                    tryConnect(activeChatId, true);
+                }
+            }
+        }, 3000);
+    };
+
+    function initPeerConnection(username) {
+        if (peer) {
+            try { peer.destroy(); } catch(e) {}
+        }
+
+        peer = new Peer(PREFIX + username, {
+            config: {
+                'iceServers': [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' }
+                ]
+            }
+        });
+
+        peer.on('open', () => {
+            console.log("Online as:", username);
+        });
+
+        peer.on('connection', (conn) => {
+            const friendName = conn.peer.replace(PREFIX, '');
+            setupConnection(friendName, conn);
+        });
+
+        peer.on('error', (err) => {
+            if (err.type === 'unavailable-id') {
+                myName = "user_" + Math.floor(1000 + Math.random() * 9000);
+                updateMyBadgeUI();
+                initPeerConnection(myName);
+            }
+        });
+    }
+
+    function updateMyBadgeUI() {
+        document.getElementById('my-badge').innerText = "@" + myName;
+        document.getElementById('modal-current-username').innerText = "@" + myName;
+    }
+
+    function openMyBadgeModal() {
+        document.getElementById('my-badge-modal').style.display = 'flex';
+    }
+
+    function copyMyUsername() {
+        navigator.clipboard.writeText("@" + myName).then(() => {
+            closeModals(null, 'my-badge-modal');
+        }).catch(() => {
+            const textarea = document.createElement('textarea');
+            textarea.value = "@" + myName;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            closeModals(null, 'my-badge-modal');
+        });
+    }
+
+    function openChangeUsernamePrompt() {
+        document.getElementById('my-badge-modal').style.display = 'none';
+        document.getElementById('new-username-input').value = myName;
+        document.getElementById('change-username-modal').style.display = 'flex';
+        document.getElementById('new-username-input').focus();
+    }
+
+    function applyNewUsername() {
+        const raw = document.getElementById('new-username-input').value;
+        const newName = cleanUsername(raw);
+        if (!newName) return alert("Введи корректный юз!");
+
+        if (newName === myName) {
+            closeModals(null, 'change-username-modal');
+            return;
+        }
+
+        myName = newName;
+        updateMyBadgeUI();
+        closeModals(null, 'change-username-modal');
+        initPeerConnection(myName);
+    }
+
+    function closeModals(e, modalId) {
+        if (!e || e.target.id === modalId) {
+            document.getElementById(modalId).style.display = 'none';
+            if (modalId === 'msg-modal') selectedMsgIndex = null;
+        }
+    }
+
+    function renderChatList() {
+        const list = document.getElementById('chat-list');
+        list.innerHTML = '';
+
+        const keys = ['saved', ...Object.keys(chats).filter(k => k !== 'saved')];
+
+        keys.forEach(id => {
+            const chat = chats[id];
+            const lastMsgObj = chat.messages[chat.messages.length - 1];
+            const lastText = lastMsgObj ? lastMsgObj.text : (chat.isSelfSaved ? "Твои личные заметки" : "Нажми, чтобы написать");
+
+            const item = document.createElement('div');
+            item.className = 'chat-item';
+            item.onclick = () => openChat(id);
+
+            const avatarText = chat.isSelfSaved ? '⭐' : id[0].toUpperCase();
+            const avatarClass = chat.isSelfSaved ? 'avatar saved' : 'avatar';
+            const unreadHtml = chat.unread > 0 ? `<span class="unread-badge">${chat.unread}</span>` : '';
+
+            item.innerHTML = `
+                <div class="${avatarClass}">${avatarText}</div>
+                <div class="chat-info">
+                    <div class="chat-title">
+                        <span>${chat.title}</span>
+                        ${unreadHtml}
+                    </div>
+                    <div class="chat-preview">${escapeHtml(lastText)}</div>
+                </div>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    function searchAndOpenChat() {
+        const input = document.getElementById('search-input');
+        const target = cleanUsername(input.value);
+        if (!target) return;
+
+        if (target === myName) {
+            input.value = '';
+            openChat('saved');
+            return;
+        }
+
+        if (!chats[target]) {
+            chats[target] = {
+                title: '@' + target,
+                isSelfSaved: false,
+                messages: [],
+                unread: 0
+            };
+        }
+
+        input.value = '';
+        openChat(target);
+        tryConnect(target, false);
+    }
+
+    function tryConnect(target, isBackground) {
+        if (connections[target] && connections[target].open) {
+            if (activeChatId === target) {
+                document.getElementById('active-status').innerText = "в сети (онлайн)";
+                document.getElementById('active-status').style.color = "#03dac6";
+            }
+            return;
+        }
+
+        if (!isBackground && activeChatId === target) {
+            document.getElementById('active-status').innerText = "подключение...";
+            document.getElementById('active-status').style.color = "#ffb74d";
+        }
+
+        const conn = peer.connect(PREFIX + target, { reliable: true });
+        setupConnection(target, conn);
+
+        if (!isBackground) {
+            setTimeout(() => {
+                if (activeChatId === target && (!connections[target] || !connections[target].open)) {
+                    document.getElementById('active-status').innerText = "нет в сети";
+                    document.getElementById('active-status').style.color = "#ff5252";
+                }
+            }, 3500);
+        }
+    }
+
+    function setupConnection(friendName, conn) {
+        connections[friendName] = conn;
+
+        if (!chats[friendName]) {
+            chats[friendName] = {
+                title: '@' + friendName,
+                isSelfSaved: false,
+                messages: [],
+                unread: 0
+            };
+            renderChatList();
+        }
+
+        conn.on('open', () => {
+            if (activeChatId === friendName) {
+                document.getElementById('active-status').innerText = "в сети (онлайн)";
+                document.getElementById('active-status').style.color = "#03dac6";
+            }
+        });
+
+        conn.on('data', (data) => {
+            chats[friendName].messages.push({
+                sender: 'friend',
+                text: data,
+                time: getTime()
+            });
+
+            if (activeChatId === friendName) {
+                renderMessages();
+            } else {
+                chats[friendName].unread++;
+                renderChatList();
+            }
+        });
+
+        conn.on('close', () => {
+            connections[friendName] = null;
+            if (activeChatId === friendName) {
+                document.getElementById('active-status').innerText = "нет в сети";
+                document.getElementById('active-status').style.color = "#ff5252";
+            }
+        });
+    }
+
+    function openChat(id) {
+        activeChatId = id;
+        const chat = chats[id];
+        chat.unread = 0;
+
+        document.getElementById('main-screen').classList.remove('active');
+        document.getElementById('chat-screen').classList.add('active');
+
+        document.getElementById('active-title').innerText = chat.title;
+        const av = document.getElementById('active-avatar');
+
+        if (chat.isSelfSaved) {
+            av.innerText = '⭐';
+            av.className = 'avatar saved';
+            document.getElementById('active-status').innerText = "Заметки (сохраняются)";
+            document.getElementById('active-status').style.color = "#8e8e93";
+        } else {
+            av.innerText = id[0].toUpperCase();
+            av.className = 'avatar';
+            tryConnect(id, false);
+        }
+
+        renderMessages();
+    }
+
+    function closeChat() {
+        activeChatId = null;
+        document.getElementById('chat-screen').classList.remove('active');
+        document.getElementById('main-screen').classList.add('active');
+        renderChatList();
+    }
+
+    function renderMessages() {
+        const box = document.getElementById('messages-box');
+        box.innerHTML = '';
+        if (!activeChatId) return;
+
+        chats[activeChatId].messages.forEach((m, index) => {
+            const div = document.createElement('div');
+            if (m.sender === 'sys') {
+                div.className = 'sys-msg';
+                div.innerText = m.text;
+            } else {
+                div.className = 'msg ' + (m.sender === 'me' ? 'my-msg' : 'friend-msg');
+                div.innerHTML = `<div>${escapeHtml(m.text)}</div><div class="msg-time">${m.time}</div>`;
+                div.onclick = () => openMsgModal(index);
+            }
+            box.appendChild(div);
+        });
+        box.scrollTop = box.scrollHeight;
+    }
+
+    function openMsgModal(index) {
+        selectedMsgIndex = index;
+        const msgObj = chats[activeChatId].messages[index];
+        const editBtn = document.getElementById('edit-btn-option');
+
+        if (msgObj.sender === 'me') {
+            editBtn.style.display = 'block';
+        } else {
+            editBtn.style.display = 'none';
+        }
+
+        document.getElementById('msg-modal').style.display = 'flex';
+    }
+
+    function copySelectedMsg() {
+        if (selectedMsgIndex === null) return;
+        const text = chats[activeChatId].messages[selectedMsgIndex].text;
+        
+        navigator.clipboard.writeText(text).then(() => {
+            closeModals(null, 'msg-modal');
+        }).catch(() => {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            closeModals(null, 'msg-modal');
+        });
+    }
+
+    function editSelectedMsg() {
+        if (selectedMsgIndex === null) return;
+        const msgObj = chats[activeChatId].messages[selectedMsgIndex];
+        
+        if (msgObj.sender !== 'me') {
+            alert("Можно изменять только свои сообщения!");
+            closeModals(null, 'msg-modal');
+            return;
+        }
+
+        document.getElementById('msg-input').value = msgObj.text;
+        document.getElementById('msg-input').focus();
+
+        chats[activeChatId].messages.splice(selectedMsgIndex, 1);
+        
+        if (activeChatId === 'saved') saveNotesToStorage();
+
+        renderMessages();
+        closeModals(null, 'msg-modal');
+    }
+
+    function sendMessage() {
+        const input = document.getElementById('msg-input');
+        const text = input.value.trim();
+        if (!text || !activeChatId) return;
+
+        const msgObj = { sender: 'me', text: text, time: getTime() };
+
+        if (activeChatId === 'saved') {
+            chats['saved'].messages.push(msgObj);
+            saveNotesToStorage();
+        } else {
+            let conn = connections[activeChatId];
+            if (conn && conn.open) {
+                conn.send(text);
+                chats[activeChatId].messages.push(msgObj);
+            } else {
+                // Если соединение еще не установилось или друг офлайн, пробуем соединиться и отправить
+                tryConnect(activeChatId, false);
+                setTimeout(() => {
+                    conn = connections[activeChatId];
+                    if (conn && conn.open) {
+                        conn.send(text);
+                        chats[activeChatId].messages.push(msgObj);
+                        renderMessages();
+                    } else {
+                        alert("Собеседник не в сети! Подождите, пока он откроет приложение.");
+                    }
+                }, 1000);
+                input.value = '';
+                return;
+            }
+        }
+
+        input.value = '';
+        renderMessages();
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+</script>
+
+</body>
+</html>
